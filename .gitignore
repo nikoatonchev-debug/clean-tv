@@ -1,0 +1,12 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.apk
+*.mp4
+tools/out/
+tools/photos/
+tools/photos4k/
+tools/walls/
+tools/walls4k/
