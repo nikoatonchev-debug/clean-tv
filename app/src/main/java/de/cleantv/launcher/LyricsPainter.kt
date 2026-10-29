@@ -90,7 +90,7 @@ class LyricsPainter(private val ctx: android.content.Context) {
         val baseY = top - r.top + h * 0.05f
         val gap = h * 0.125f
         val bigSize = h * 0.17f
-        val smallSize = h * 0.055f
+        val smallSize = h * 0.042f
         val maxW = w * 0.62f
         val slide = (i - 1) + ease          // fließende Position zwischen zwei Wörtern
         big.color = main
