@@ -8,8 +8,9 @@ Eine ruhige, werbefreie Startseite für **Android TV**: ein großes Foto, die Uh
 
 - **Uhr hinter dem Motiv:** 35 Hintergründe in 4K (Berge, Seen, Städte …), bei denen die Uhr hinter dem Berg verschwindet.
 - **Nur 5 Apps oben**, alles andere unter „Alle Apps“. Mit „OK lange drücken“ heftest du Apps oben an oder entfernst sie.
-- **Musik auf der Startseite:** Läuft Spotify (oder eine andere Musik-App), erscheint der Liedtext Wort für Wort im Takt, dazu Cover, Fortschritt und Knöpfe (zurück, Pause, vor, Zufall, DJ).
-- **Ruhemodus:** Nach 30 Sekunden ohne Taste (oder sofort mit Pfeil nach oben) verschwinden die Apps, nur Bild und Uhr bleiben, etwas dunkler.
+- **Musik auf der Startseite:** Läuft Spotify (oder eine andere Musik-App), erscheint der Liedtext Wort für Wort im Takt, dazu Cover, Fortschritt und Knöpfe (zurück, Pause, vor, Zufall, DJ, ausblenden).
+- **Fernseher automatisch mit an und aus** über HDMI-CEC, mit Sicherung für langsame Fernseher. Die Einschalt-Animation wartet, bis der Fernseher ein Bild zeigt.
+- **Ruhemodus:** Nach 30 Sekunden ohne Taste (oder sofort mit Pfeil nach oben, wenn es nicht weiter hoch geht) verschwinden die Apps, nur Bild und Uhr bleiben, etwas dunkler.
 - **Home-Leiste:** Home-Taste in einer App lässt unten eine kleine Leiste hochgleiten, zweimal Home führt zur Startseite.
 - **Einschalt-Animation** mit dem Clean-TV-Logo.
 - **Normales System:** Unter „Alle Apps“ → „Normales System“ wechselst du jederzeit zur originalen Google-Startseite zurück. Clean TV öffnen schaltet wieder um.

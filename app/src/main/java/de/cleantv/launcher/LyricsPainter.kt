@@ -51,7 +51,7 @@ class LyricsPainter(private val ctx: android.content.Context) {
         val cur = words.getOrNull(i)?.text.orEmpty()
         // in Pausen (Zwischenspiel) nur der Schimmer
         val now = SystemClock.uptimeMillis()
-        val t = ((now - changedAt) / 140f).coerceIn(0f, 1f)
+        val t = ((now - changedAt) / 260f).coerceIn(0f, 1f)
         val ease = 1 - (1 - t) * (1 - t) * (1 - t)
 
         // ---- Schimmer ----
@@ -77,65 +77,56 @@ class LyricsPainter(private val ctx: android.content.Context) {
                 // kein Liedtext gefunden: Songtitel groß und schlicht
                 drawTitle(c, cx, top, w, h, main, fadeA, dark)
             } else {
-                // Pause: drei Punkte füllen sich bis zum nächsten Gesang (wie bei Spotify)
-                val from = words.getOrNull(i)?.start ?: 0L
-                val to = words.drop(maxOf(i + 1, 0)).firstOrNull { it.text.isNotEmpty() }?.start ?: (from + 5000)
-                val p = ((pos - from).toFloat() / maxOf(1L, to - from)).coerceIn(0f, 1f)
-                drawDots(c, cx, top + h * 0.13f, h, p, pulse, main, fadeA)
+                // Pause / Zwischenspiel: drei Punkte, die ruhig im Takt atmen
+                drawDots(c, cx, top + h * 0.13f, h, now, pulse, main, fadeA)
             }
             return true
         }
 
-        // ---- großes Wort: passt sich der Breite an ----
-        big.textSize = h * 0.20f
-        val maxW = w * 0.62f
-        val tw = big.measureText(cur)
-        if (tw > maxW) big.textSize *= maxW / tw
+        // ---- Wörter untereinander: voriges oben, aktuelles groß in der Mitte, nächstes unten ----
+        // beim Wechsel rutscht alles eine Zeile nach oben: das alte Wort wird kleiner, das neue größer
+        big.textSize = h * 0.17f
         big.getTextBounds("Hg", 0, 2, r)
-        val capTop = r.top
-        val baseY = top - capTop + h * 0.05f
-        val scale = 0.86f + 0.14f * ease + 0.03f * pulse
+        val baseY = top - r.top + h * 0.05f
+        val gap = h * 0.125f
+        val bigSize = h * 0.17f
+        val smallSize = h * 0.055f
+        val maxW = w * 0.62f
+        val slide = (i - 1) + ease          // fließende Position zwischen zwei Wörtern
         big.color = main
-        big.alpha = (255 * fadeA * (0.35f + 0.65f * ease)).toInt()
         if (!dark) big.setShadowLayer(h * 0.012f, 0f, h * 0.003f, 0x40000000)
-        c.save()
-        c.scale(scale, scale, cx, baseY + capTop / 2)
-        c.drawText(cur, cx, baseY, big)
-        c.restore()
-        val curW = big.measureText(cur) * scale
-
-        // ---- vorheriges / nächstes Wort klein daneben ----
-        small.textSize = h * 0.045f
-        small.color = main
-        if (!dark) small.setShadowLayer(h * 0.008f, 0f, 0f, 0x40000000)
-        val prev = words.getOrNull(i - 1)?.text.orEmpty()
-        val next = words.getOrNull(i + 1)?.text.orEmpty()
-        val left = cx - curW / 2
-        val right = cx + curW / 2
-        if (prev.isNotEmpty()) {
-            small.textAlign = Paint.Align.LEFT
-            small.alpha = (170 * fadeA * (1 - 0.4f * ease)).toInt()
-            c.drawText("– $prev", max(w * 0.12f, left), baseY + capTop * 1.08f - (1 - ease) * h * 0.03f, small)
-        }
-        if (next.isNotEmpty()) {
-            small.textAlign = Paint.Align.RIGHT
-            small.alpha = (150 * fadeA * ease).toInt()
-            c.drawText(next, min(w * 0.88f, right), baseY + h * 0.065f + (1 - ease) * h * 0.02f, small)
+        for (k in (i - 2)..(i + 1)) {
+            val txt = words.getOrNull(k)?.text.orEmpty()
+            if (txt.isEmpty()) continue
+            val d = k - slide                  // 0 = Mitte, -1 = oben, +1 = unten
+            val ad = kotlin.math.abs(d)
+            if (ad >= 2f) continue
+            var size = smallSize + (bigSize - smallSize) * (1f - ad.coerceAtMost(1f))
+            big.textSize = size
+            val tw = big.measureText(txt)
+            if (tw > maxW) { size *= maxW / tw; big.textSize = size }
+            val alpha = if (ad <= 1f) 1f - 0.5f * ad else 0.5f * (2f - ad)
+            big.alpha = (255 * fadeA * alpha).toInt()
+            val pop = if (ad < 0.5f) 1f + 0.03f * pulse else 1f
+            c.save()
+            c.scale(pop, pop, cx, baseY + d * gap)
+            c.drawText(txt, cx, baseY + d * gap, big)
+            c.restore()
         }
         return true
     }
 
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    private fun drawDots(c: Canvas, cx: Float, cy: Float, h: Float, p: Float, pulse: Float, color: Int, fadeA: Float) {
-        val r = h * 0.022f * (1f + 0.1f * pulse)
-        val gap = h * 0.075f
+    private fun drawDots(c: Canvas, cx: Float, cy: Float, h: Float, now: Long, pulse: Float, color: Int, fadeA: Float) {
+        val r = h * 0.02f * (1f + 0.08f * pulse)
+        val gap = h * 0.07f
         dot.color = color
         for (k in 0..2) {
-            // jeder Punkt füllt sich in seinem Drittel weich auf
-            val f = ((p * 3f) - k).coerceIn(0f, 1f)
-            dot.alpha = (255 * fadeA * (0.16f + 0.84f * f)).toInt()
-            c.drawCircle(cx + (k - 1) * gap, cy, r * (0.7f + 0.3f * f), dot)
+            // weiche Welle von links nach rechts, endlos
+            val wave = (0.5f + 0.5f * sin(now / 380.0 - k * 0.9).toFloat())
+            dot.alpha = (255 * fadeA * (0.3f + 0.7f * wave)).toInt()
+            c.drawCircle(cx + (k - 1) * gap, cy - wave * h * 0.008f, r * (0.8f + 0.25f * wave), dot)
         }
     }
 

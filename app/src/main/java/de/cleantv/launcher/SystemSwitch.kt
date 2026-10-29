@@ -75,4 +75,21 @@ object SystemSwitch {
             main.post { done(ok) }
         }
     }
+
+    /** Einen Befehl auf der eigenen Box ausführen und die Ausgabe zurückgeben (im Hintergrund). */
+    fun shell(ctx: Context, cmd: String, done: (String?) -> Unit) {
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        IO.execute {
+            val out = try {
+                val priv = File(ctx.filesDir, "adbkey")
+                val pub = File(ctx.filesDir, "adbkey.pub")
+                if (!priv.exists() || !pub.exists()) AdbKeyPair.generate(priv, pub)
+                Dadb.create("127.0.0.1", 5555, AdbKeyPair.read(priv, pub)).use { it.shell(cmd).allOutput }
+            } catch (e: Throwable) {
+                android.util.Log.w("CleanTV", "Befehl fehlgeschlagen: $e")
+                null
+            }
+            main.post { done(out) }
+        }
+    }
 }

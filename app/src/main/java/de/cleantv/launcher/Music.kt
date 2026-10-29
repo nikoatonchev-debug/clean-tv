@@ -73,7 +73,13 @@ object Music {
         return posMs + ((SystemClock.elapsedRealtime() - posAt) * speed).toLong()
     }
 
-    val active get() = track != null && (playing || controller?.playbackState?.state == PlaybackState.STATE_PAUSED || fake)
+    val active get() = track != null && !hiddenNow() &&
+        (playing || controller?.playbackState?.state == PlaybackState.STATE_PAUSED || fake)
+
+    /** mit dem X ausgeblendet – gilt bis zum nächsten Lied */
+    private var hiddenFor: String? = null
+    private fun hiddenNow() = track?.let { hiddenFor == "${it.artist}|${it.title}" } == true
+    fun hide() { track?.let { hiddenFor = "${it.artist}|${it.title}" }; changed() }
 
     // ---------------- Spotify & Co. beobachten ----------------
 
@@ -147,14 +153,18 @@ object Music {
     // ---------------- Liedtexte (LRCLIB) ----------------
 
     private fun loadLyrics(title: String, artist: String, album: String, durMs: Long) {
-        val key = "$artist|$title"
+        // Länge gehört zum Schlüssel: Spotify meldet beim Liedwechsel oft erst 0 und dann die echte Länge
+        val key = "$artist|$title|${durMs / 1000}"
         if (key == lyricsFor) return
         lyricsFor = key
         words = null
         if (title.isBlank()) return
+        // ohne Liedlänge lässt sich die richtige Version (Remix, Extended …) nicht erkennen: abwarten
+        if (durMs <= 0 && !fake) return
         io.execute {
             val lrc = try { fetchLrc(title, artist, album, durMs) } catch (_: Exception) { null }
-            val w = lrc?.let { toWords(it) }
+            // Sicherheit: Text, der deutlich länger als das Lied ist, gehört zu einer anderen Version
+            val w = lrc?.let { toWords(it) }?.takeIf { ws -> durMs <= 0 || (ws.lastOrNull()?.start ?: 0) < durMs + 2_000 }
             main.post { if (lyricsFor == key) { words = w; changed() } }
         }
     }
@@ -174,7 +184,7 @@ object Music {
         // Nur Liedtexte nehmen, deren Länge zur gespielten Version passt – sonst laufen z. B.
         // bei "Extended Mix" die Wörter der kurzen Radio-Version eine Minute zu früh.
         val durS = durMs / 1000.0
-        fun fits(o: JSONObject) = durMs <= 0 || kotlin.math.abs(o.optDouble("duration", -99.0) - durS) <= 3.0
+        fun fits(o: JSONObject) = durMs <= 0 || kotlin.math.abs(o.optDouble("duration", -99.0) - durS) <= 2.0
         fun synced(o: JSONObject) = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         for (name in listOf(title, clean).distinct()) {
             var q = "https://lrclib.net/api/get?artist_name=${enc(artist)}&track_name=${enc(name)}"
@@ -307,16 +317,24 @@ object Music {
         changed()
     }
 
-    /** Spotify-DJ starten (Spotify-Wiedergabeliste "DJ") */
+    /**
+     * Spotify-DJ starten. Erst unauffällig über die Wiedergabe-Steuerung; springt das Lied
+     * nach 4 s nicht um (z. B. wenn Spotify gerade über das Handy läuft), öffnet sich der DJ direkt in Spotify.
+     */
     fun startDj(ctx: Context) {
         val uri = android.net.Uri.parse("spotify:playlist:37i9dQZF1EYkqdzj48dyYq")
-        val c = controller
-        if (c != null && c.packageName == Apps.SPOTIFY) {
-            c.transportControls.playFromUri(uri, null)
-        } else {
+        val openApp = {
             ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
                 .setPackage(Apps.SPOTIFY).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
         }
+        val c = controller
+        if (c == null || c.packageName != Apps.SPOTIFY) { openApp(); return }
+        val before = track?.let { "${it.artist}|${it.title}" }
+        try { c.transportControls.playFromUri(uri, null) } catch (_: Exception) { openApp(); return }
+        main.postDelayed({
+            val now = track?.let { "${it.artist}|${it.title}" }
+            if (now == before || !playing) openApp()
+        }, 4_000)
     }
 
     // ---------------- Test ohne Spotify-Anmeldung ----------------

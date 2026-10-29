@@ -58,6 +58,11 @@ object Icons {
                     c.drawRoundRect(x(0.68f), y(0.2f), x(0.8f), y(0.8f), w * 0.03f, w * 0.03f, f)
                     c.restore()
                 }
+                "close" -> {
+                    s.strokeWidth = w * 0.09f
+                    c.drawLine(x(0.28f), y(0.28f), x(0.72f), y(0.72f), s)
+                    c.drawLine(x(0.72f), y(0.28f), x(0.28f), y(0.72f), s)
+                }
                 "shuffle" -> {
                     s.strokeWidth = w * 0.08f
                     val p = Path().apply {

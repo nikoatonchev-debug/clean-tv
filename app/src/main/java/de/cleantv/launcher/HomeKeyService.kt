@@ -57,13 +57,19 @@ class HomeKeyService : AccessibilityService() {
         ).build()
         tickId = sounds.load(this, R.raw.tick, 1)
         // Fernseher geht an (Box wacht auf): Einschalt-Bildschirm, dann Startseite
-        registerReceiver(screenOn, android.content.IntentFilter(Intent.ACTION_SCREEN_ON))
+        registerReceiver(screenOn, android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        })
     }
 
     private val screenOn = object : android.content.BroadcastReceiver() {
         override fun onReceive(c: android.content.Context, i: Intent) {
+            if (i.action == Intent.ACTION_SCREEN_OFF) { TvPower.onScreenOff(this@HomeKeyService); return }
+            TvPower.onScreenOn(this@HomeKeyService)
+            if (TvPower.isRetrying()) return
             hide(false)
-            startActivity(Intent(this@HomeKeyService, HomeActivity::class.java).putExtra("splash", true)
+            startActivity(Intent(this@HomeKeyService, HomeActivity::class.java).putExtra("splash", true).putExtra("warten", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }

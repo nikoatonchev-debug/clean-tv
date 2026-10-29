@@ -115,7 +115,7 @@ class HomeActivity : Activity() {
         }
         // ---- "Läuft gerade": schlichte Glas-Leiste über den Apps ----
         nowPlaying = buildNowPlaying()
-        bar.addView(nowPlaying, LinearLayout.LayoutParams(dp(620), -2).apply { bottomMargin = dp(22) })
+        bar.addView(nowPlaying, LinearLayout.LayoutParams(dp(670), -2).apply { bottomMargin = dp(22) })
         bar.addView(row, LinearLayout.LayoutParams(-2, -2))
         focusLabel = TextView(this).apply {
             setTextColor(0xE6FFFFFF.toInt())
@@ -170,7 +170,7 @@ class HomeActivity : Activity() {
         rootView = root
 
         // Einschalt-Bildschirm: nach einem Neustart der Box oder wenn der Fernseher angeht
-        if (SystemClock.elapsedRealtime() < 5 * 60 * 1000L || intent.getBooleanExtra("splash", false)) showSplash()
+        if (SystemClock.elapsedRealtime() < 5 * 60 * 1000L || intent.getBooleanExtra("splash", false)) showSplash(waitForTv = intent.getBooleanExtra("warten", false))
 
         Music.attach(this)
         Music.addListener(musicListener)
@@ -229,7 +229,7 @@ class HomeActivity : Activity() {
         closeDrawer()
         wake(false)
         row.getChildAt(0)?.requestFocus()
-        if (intent.getBooleanExtra("splash", false)) showSplash()
+        if (intent.getBooleanExtra("splash", false)) showSplash(waitForTv = intent.getBooleanExtra("warten", false))
         // zum Ausprobieren ohne Spotify-Anmeldung: --es musiktest "Titel|Interpret|Album|Sekunden|StartSek"
         intent.getStringExtra("musiktest")?.split("|")?.let { p ->
             if (p.size >= 5) Music.fakePlay(p[0], p[1], p[2], p[3].toLong() * 1000, p[4].toLong() * 1000)
@@ -314,8 +314,12 @@ class HomeActivity : Activity() {
         npPlay = mediaButton(Icons.Media("pause")) { Music.playPause() }
         npShuffle = mediaButton(Icons.Media("shuffle")) { Music.toggleShuffle() }
         val dj = mediaButton(null, "DJ") { Music.startDj(this) }
+        val close = mediaButton(Icons.Media("close")) {
+            Music.hide()
+            row.getChildAt(0)?.requestFocus()
+        }
         listOf(mediaButton(Icons.Media("prev")) { Music.prev() }, npPlay,
-            mediaButton(Icons.Media("next")) { Music.next() }, npShuffle, dj).forEach {
+            mediaButton(Icons.Media("next")) { Music.next() }, npShuffle, dj, close).forEach {
             box.addView(it, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
         }
         return box
@@ -410,7 +414,11 @@ class HomeActivity : Activity() {
     private lateinit var rootView: FrameLayout
     private var splash: SplashView? = null
 
-    private fun showSplash() {
+    /**
+     * @param waitForTv true beim Einschalten: Der Fernseher braucht ein paar Sekunden, bis er ein Bild zeigt.
+     * Die Animation startet erst, wenn er sich am HDMI-Anschluss neu angemeldet hat (plus kurze Bild-Synchronisation).
+     */
+    private fun showSplash(waitForTv: Boolean = false) {
         if (splash != null) return
         val s = SplashView(this, font(650, 32)) {
             val v = splash ?: return@SplashView
@@ -421,10 +429,30 @@ class HomeActivity : Activity() {
         }
         splash = s
         rootView.addView(s, FrameLayout.LayoutParams(-1, -1))
-        s.start()
+        if (!waitForTv) { s.start(); return }
+
+        val since = System.currentTimeMillis() / 1000 * 1000 - 1000
+        var started = false
+        val go = Runnable { if (!started && splash === s) { started = true; s.start() } }
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        val deadline = android.os.SystemClock.uptimeMillis() + 12_000
+        fun poll() {
+            if (started || splash !== s) return
+            if (android.os.SystemClock.uptimeMillis() > deadline) { go.run(); return }
+            SystemSwitch.shell(this, "dumpsys hdmi_control | grep 'hotplug port=1 connected=true' | tail -1") { out ->
+                val t = out?.let { Regex("""time=(\S+ \S+)""").find(it)?.groupValues?.get(1) }
+                    ?.let { runCatching { fmt.parse(it)?.time }.getOrNull() }
+                if (t != null && t >= since) handler.postDelayed(go, 1_300)   // Bild braucht noch einen Moment
+                else handler.postDelayed({ poll() }, 500)
+            }
+        }
+        poll()
     }
 
     // ---------------- Ruhemodus ----------------
+
+    // laufende Abdunkel-Animation, damit Aufwachen sie sicher abbricht
+    private var dimAnim: ValueAnimator? = null
 
     private fun enterAmbient() {
         if (!resumed || ambient) return
@@ -440,7 +468,8 @@ class HomeActivity : Activity() {
                 .setStartDelay(i * 90L).setDuration(900).setInterpolator(smooth).start()
         }
         // 2. Bild wird langsam dunkler und zoomt ganz sanft heran
-        ValueAnimator.ofFloat(scene.dim, 1f).apply {
+        dimAnim?.cancel()
+        dimAnim = ValueAnimator.ofFloat(scene.dim, 1f).apply {
             duration = 3600
             startDelay = 300
             interpolator = smooth
@@ -470,7 +499,8 @@ class HomeActivity : Activity() {
                 .setStartDelay(i * 50L * d).setDuration(560 * d).setInterpolator(pop).start()
         }
         scene.animate().scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(600 * d).setInterpolator(pop).start()
-        ValueAnimator.ofFloat(scene.dim, 0f).apply {
+        dimAnim?.cancel()
+        dimAnim = ValueAnimator.ofFloat(scene.dim, 0f).apply {
             duration = 560 * d
             interpolator = pop
             addUpdateListener { scene.dim = it.animatedValue as Float }
