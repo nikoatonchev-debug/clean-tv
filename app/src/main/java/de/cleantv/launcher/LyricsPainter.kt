@@ -60,8 +60,9 @@ class LyricsPainter(private val ctx: android.content.Context) {
         val cx = w / 2
         val cy = top + h * 0.11f
         val rad = h * (0.30f + 0.10f * pulse)
-        val tint = Music.tint
-        val a = ((70 + 110 * pulse) * (1 - 0.5f * dim)).toInt().coerceIn(0, 255)
+        // schlichter, fast weißer Schimmer – passt zu jedem Hintergrund
+        val tint = 0xFFEEF0F4.toInt()
+        val a = ((45 + 75 * pulse) * (1 - 0.5f * dim)).toInt().coerceIn(0, 255)
         glow.shader = RadialGradient(cx, cy, rad,
             intArrayOf(Color.argb(a, Color.red(tint), Color.green(tint), Color.blue(tint)), 0x00000000),
             null, Shader.TileMode.CLAMP)

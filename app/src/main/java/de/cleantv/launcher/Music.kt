@@ -186,22 +186,41 @@ object Music {
         val durS = durMs / 1000.0
         fun fits(o: JSONObject) = durMs <= 0 || kotlin.math.abs(o.optDouble("duration", -99.0) - durS) <= 2.0
         fun synced(o: JSONObject) = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
+        // alle passenden Versionen sammeln (direkter Treffer + Suche) und die beste nehmen
+        val cands = ArrayList<JSONObject>()
+        val seen = HashSet<Int>()
+        fun add(o: JSONObject) { if (fits(o) && synced(o) != null && seen.add(o.optInt("id", cands.size))) cands += o }
         for (name in listOf(title, clean).distinct()) {
             var q = "https://lrclib.net/api/get?artist_name=${enc(artist)}&track_name=${enc(name)}"
             if (album.isNotBlank()) q += "&album_name=${enc(album)}"
             if (durMs > 0) q += "&duration=${durMs / 1000}"
-            get(q)?.let { JSONObject(it) }?.takeIf { fits(it) }?.let { synced(it) }?.let { return it }
-        }
-        for (name in listOf(title, clean).distinct()) {
+            get(q)?.let { runCatching { add(JSONObject(it)) } }
             val s = get("https://lrclib.net/api/search?track_name=${enc(name)}&artist_name=${enc(artist)}") ?: continue
             val arr = org.json.JSONArray(s)
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                if (fits(o)) synced(o)?.let { return it }
-            }
+            for (i in 0 until arr.length()) add(arr.getJSONObject(i))
         }
-        return null
+        return cands.minByOrNull { score(it, durS, album, title) }?.let { synced(it) }
     }
+
+    /**
+     * Wie gut passt eine Version zum gespielten Lied? Kleiner = besser.
+     * Zählt: Längenabweichung, ob der Text sinnvoll vor dem Liedende aufhört, Album und Titel genau gleich.
+     */
+    private fun score(o: JSONObject, durS: Double, album: String, title: String): Double {
+        var sc = kotlin.math.abs(o.optDouble("duration", durS) - durS) * 3.0
+        val times = Regex("""\[(\d+):(\d+(?:\.\d+)?)]""").findAll(o.optString("syncedLyrics"))
+            .map { it.groupValues[1].toDouble() * 60 + it.groupValues[2].toDouble() }.toList()
+        val last = times.maxOrNull() ?: 0.0
+        if (durS > 0) {
+            if (last > durS) sc += 50.0                                   // Text länger als das Lied
+            else if (last < durS * 0.5) sc += 10.0                        // Text hört viel zu früh auf
+        }
+        if (times.size < 8) sc += 5.0                                      // kaum Zeitmarken
+        if (album.isNotBlank() && !o.optString("albumName").equals(album, ignoreCase = true)) sc += 1.5
+        if (!o.optString("trackName").equals(title, ignoreCase = true)) sc += 1.0
+        return sc
+    }
+
 
     /** LRC-Zeilen → einzelne Wörter; die Zeit innerhalb einer Zeile wird nach Wortlänge verteilt. */
     private fun toWords(lrc: String): List<Word> {
